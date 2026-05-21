@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 
 interface ScanHistoryItem {
-  scan_seq: number;
-  scan_id: string;
-  target_name: string;
-  status: string;
-  issues_count: number;
-  scan_date: string;
-  sbom_id?: string | null; // sbom_id는 없을 수도 있으므로 ? 처리
+  scanId: string;
+  target: string;
+  policy: string;
+  language: string;
+  issuesCritical: number;
+  issuesHigh: number;
+  issuesMedium: number;
+  issuesLow: number;
+  startedAt: string;
+  sbomId?: string | null; // sbom_id는 없을 수도 있으므로 ? 처리
 }
 
 export default function ScanHistoryPage() {
@@ -88,48 +91,47 @@ export default function ScanHistoryPage() {
             ) : (
               history.map((scan) => (
                 <tr
-                  key={scan.scan_seq}
+                  // 💡 2. key 값을 고유 식별자인 scan.scanId로 변경!
+                  key={scan.scanId}
                   className="hover:bg-slate-50 transition-colors"
                 >
                   <td className="px-6 py-4">
                     <div className="font-medium text-slate-800">
-                      {scan.target_name}
+                      {/* 3. 변경된 필드명 적용 */}
+                      {scan.target}
                     </div>
-                    <div className="text-xs text-slate-400">{scan.scan_id}</div>
+                    <div className="text-xs text-slate-400">{scan.scanId}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-bold ${
-                        scan.status === "COMPLETED"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {scan.status}
+                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                      COMPLETED
                     </span>
                   </td>
                   <td className="px-6 py-4 font-semibold text-rose-500">
-                    {scan.issues_count}건
+                    {/* 💡 임시로 High 위험도 갯수를 표시. 총합이 필요하면 프론트에서 더하거나 백엔드에서 합산 필드를 내려줘야 합니다. */}
+                    {scan.issuesHigh + scan.issuesCritical}건
                   </td>
                   <td className="px-6 py-4 text-sm text-slate-500">
-                    {new Date(scan.scan_date).toLocaleString()}
+                    {/* 4. 날짜 필드명 변경 */}
+                    {scan.startedAt
+                      ? new Date(scan.startedAt).toLocaleString()
+                      : "-"}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex justify-center gap-2">
-                      {/* SCAN 상세 버튼 */}
                       <button
                         onClick={() =>
-                          router.push(`/dashboard/scan/${scan.scan_id}`)
+                          router.push(`/dashboard/scan/${scan.scanId}`)
                         }
                         className="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-bold rounded border border-blue-200 hover:bg-blue-100"
                       >
                         취약점 리포트
                       </button>
-                      {/* SBOM 버튼: sbom_id가 있을 때만 노출 */}
-                      {scan.sbom_id && (
+                      {/* 5. sbomId 조건 렌더링 */}
+                      {scan.sbomId && (
                         <button
                           onClick={() =>
-                            router.push(`/dashboard/sbom/${scan.sbom_id}`)
+                            router.push(`/dashboard/sbom/${scan.sbomId}`)
                           }
                           className="px-3 py-1.5 bg-emerald-50 text-emerald-600 text-xs font-bold rounded border border-emerald-200 hover:bg-emerald-100"
                         >
