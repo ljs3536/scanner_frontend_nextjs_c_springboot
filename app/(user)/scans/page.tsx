@@ -25,7 +25,7 @@ export default function ScanHistoryPage() {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const response = await api.get("/scans/history");
+        const response = await api.get("/scans");
         setHistory(response.data);
       } catch (error) {
         console.error("이력 로드 실패:", error);

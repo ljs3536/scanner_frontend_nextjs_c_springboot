@@ -93,7 +93,7 @@ export default function AdvancedScanReportPage() {
     if (!scanId) return;
     const fetchReport = async () => {
       try {
-        const response = await api.get(`/scans/report/${scanId}`);
+        const response = await api.get(`/scans/${scanId}`);
         setReportData(response.data);
         // 첫 번째 이슈를 기본 선택
         if (response.data.issues?.length > 0) {
