@@ -2,10 +2,9 @@ import axios from "axios";
 
 // FastAPI 백엔드 주소 기본 설정
 const api = axios.create({
-  // 💡 환경변수가 있으면 그걸 쓰고, 없으면 기본값 8000을 쓰도록 설정
-  baseURL:
-    process.env.NEXT_PUBLIC_API_URL + "/api" ||
-    "http://localhost:8010" + "/api",
+  baseURL: process.env.NEXT_PUBLIC_API_URL
+    ? `${process.env.NEXT_PUBLIC_API_URL}/api`
+    : "http://localhost:8080/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -22,6 +21,41 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// 1. 개별 취약점/위협(Finding) 인터페이스
+export interface SbomThreat {
+  threatSeq: number;
+  threatId: string;
+  type: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+  componentRef: string;
+  componentName: string;
+  componentVersion?: string | null;
+  ecosystem: string;
+  message: string;
+  recommendation?: string;
+}
+
+// 2. 통합 SBOM 상세 인터페이스 (Spring Boot 응답 규격)
+export interface SbomDetailResponse {
+  sbomId: string;
+  status: string;
+  format: string;
+  specVersion: string;
+  componentCount: number;
+  licenseCount: number;
+  vulnerabilityCount: number;
+  riskScore: number;
+  threats: SbomThreat[]; // findings 배열이 threats로 통합됨
+}
+
+// 3. 단일 API 호출 함수
+export async function getSbomDetail(
+  sbomId: string,
+): Promise<SbomDetailResponse> {
+  const response = await api.get(`/sboms/${sbomId}`);
+  return response.data;
+}
 
 export async function downloadSbomCycloneDx(
   sbomId: string,
@@ -49,80 +83,6 @@ export async function downloadSbomCycloneDx(
   // 4. 리소스 정리
   link.remove();
   window.URL.revokeObjectURL(url);
-}
-
-export async function getSbom(
-  sbomId: string,
-): Promise<Record<string, unknown>> {
-  const response = await api.get(`/sbom/${sbomId}?format=cyclonedx-json`);
-  return response.data;
-}
-
-export async function getSbomSummary(sbomId: string): Promise<any> {
-  const response = await api.get(`/sbom/${sbomId}/summary`);
-  return response.data;
-}
-
-export async function getSbomThreats(sbomId: string): Promise<any> {
-  const response = await api.get(`/sbom/${sbomId}/threats`);
-  return response.data;
-}
-
-export interface SbomSummary {
-  sbom_id: string;
-  scan_id?: string | null;
-  ecosystems: string[];
-  component_count: number;
-  dependency_edges?: number;
-  license_count?: number;
-  vulnerability_count: number;
-  format?: string;
-  spec_version?: string;
-}
-
-export interface SbomIndex {
-  sbom_id: string;
-  scan_id?: string | null;
-  owner_key?: string | null;
-  tenant_id?: string | null;
-  project_slug?: string | null;
-  branch?: string | null;
-  commit_sha?: string | null;
-  source_kind?: string | null;
-  ecosystems: string[];
-  component_count?: number;
-  vulnerability_count?: number;
-  created_at: string;
-  cyclonedx_json: string;
-}
-
-export interface SbomThreatFinding {
-  id: string;
-  type: string;
-  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
-  component_ref: string;
-  component_name: string;
-  component_version?: string | null;
-  ecosystem: string;
-  message: string;
-  recommendation?: string;
-  evidence?: Record<string, unknown>;
-}
-
-export interface SbomThreatSummary {
-  finding_count: number;
-  risk_score: number;
-  severity_totals: Record<string, number>;
-  category_totals: Record<string, number>;
-  vulnerable_components: string[];
-  highlights: string[];
-}
-
-export interface SbomThreatResponse {
-  sbom_id: string;
-  scan_id?: string | null;
-  summary: SbomThreatSummary;
-  findings: SbomThreatFinding[];
 }
 
 export interface LlmExplainRequest {

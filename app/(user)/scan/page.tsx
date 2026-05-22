@@ -3,38 +3,68 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import {
+  ShieldAlert,
+  AlertTriangle,
+  Info,
+  CheckCircle,
+  FileText,
+  Download,
+} from "lucide-react";
 
 type ScanTabMode = "file" | "code";
+
+// 💡 1. 백엔드에서 넘어오는 응답 데이터 타입 정의 (명세서 기준)
+interface ScanResult {
+  scanId: string;
+  target: string;
+  startedAt: string;
+  durationMs: number;
+  sbomId?: string;
+  issuesSummary: {
+    CRITICAL: number;
+    HIGH: number;
+    MEDIUM: number;
+    LOW: number;
+  };
+  issues: {
+    issueSeq: number;
+    typeKo: string;
+    severity: string;
+    filePath: string;
+    lineNumber: number;
+    message: string;
+  }[];
+}
 
 export default function EnhancedScanPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ScanTabMode>("file");
 
-  // 공통 옵션 상태
   const [selectedProfile, setSelectedProfile] = useState("security_core");
   const [useSbom, setUseSbom] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
 
-  // [파일 업로드 모드] 전용 상태
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
-  // [코드 직접 입력 모드] 전용 상태
   const [pastedCode, setPastedCode] = useState("");
   const [virtualFilename, setVirtualFilename] = useState(
     "vulnerable_snippet.py",
   );
 
-  // 다중 파일 선택 핸들러
+  // 💡 2. 스캔 결과를 담을 상태 추가
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setSelectedFiles(Array.from(e.target.files));
+      setScanResult(null); // 파일이 변경되면 기존 결과 초기화
     }
   };
 
-  // 드래그 앤 드롭 이벤트 핸들러 3종
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault(); // 브라우저가 새 탭에서 파일을 열어버리는 기본 동작 방지
+    e.preventDefault();
     setIsDragging(true);
   };
 
@@ -46,28 +76,25 @@ export default function EnhancedScanPage() {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-
-    // 드래그해서 떨어뜨린 파일 데이터 추출
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       setSelectedFiles(Array.from(e.dataTransfer.files));
+      setScanResult(null);
     }
   };
 
-  // 통합 스캔 요청 관리 핸들러
   const handleExecuteScan = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsScanning(true);
+    setScanResult(null); // 새 스캔 시작 시 기존 결과 지우기
 
     try {
       let response;
 
       if (activeTab === "file") {
-        // 📁 파일 업로드 로직 실행
         if (selectedFiles.length === 0)
           return alert("스캔할 파일을 선택해주세요.");
         const formData = new FormData();
         selectedFiles.forEach((file) => formData.append("files", file));
-
         formData.append("profile", selectedProfile);
         formData.append("generate_sbom", String(useSbom));
 
@@ -75,10 +102,8 @@ export default function EnhancedScanPage() {
           headers: { "Content-Type": "multipart/form-data" },
         });
       } else {
-        // 💻 코드 직접 붙여넣기 로직 실행
         if (!pastedCode.trim())
           return alert("분석할 코드 내용을 입력해주세요.");
-
         response = await api.post("/scans/run-code", {
           code: pastedCode,
           filename: virtualFilename || "snippet.py",
@@ -86,20 +111,28 @@ export default function EnhancedScanPage() {
         });
       }
 
-      alert(`스캔 완료! 탐지된 보안 약점: ${response.data.issues_found}개`);
-      router.push("/scans"); // 관리 이력 목록 화면으로 이동
+      // 💡 3. 성공 시 응답 데이터를 상태에 저장하여 화면 렌더링 트리거
+      setScanResult(response.data);
     } catch (error: any) {
       console.error("Scan Request Failed:", error);
-      alert("스캔 수행 중 오류가 발생했습니다. 라우터 상태를 점검하세요.");
+      alert("스캔 수행 중 오류가 발생했습니다.");
     } finally {
       setIsScanning(false);
     }
   };
 
+  // 심각도 컬러맵
+  const severityColors: Record<string, string> = {
+    CRITICAL: "bg-red-100 text-red-700 border-red-200",
+    HIGH: "bg-orange-100 text-orange-700 border-orange-200",
+    MEDIUM: "bg-amber-100 text-amber-700 border-amber-200",
+    LOW: "bg-blue-100 text-blue-700 border-blue-200",
+  };
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+      {/* --- 기존 스캔 설정 및 입력 영역 --- */}
       <div className="bg-white rounded-2xl shadow-md border border-slate-100 p-8">
-        {/* 타이틀 헤더 세팅 */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
             다중 차원 보안 소스코드 스캔
@@ -110,46 +143,30 @@ export default function EnhancedScanPage() {
           </p>
         </div>
 
-        {/* 💡 상단 탭 셀렉터 전환 인터페이스 */}
         <div className="flex border-b border-slate-200 mb-6">
           <button
             type="button"
             onClick={() => setActiveTab("file")}
-            className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
-              activeTab === "file"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+            className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all ${activeTab === "file" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
           >
-            📁 파일 및 아카이브 업로드
+            📁 파일 업로드
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("code")}
-            className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
-              activeTab === "code"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+            className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all ${activeTab === "code" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
           >
-            💻 코드 소스 직접 입력
+            💻 코드 직접 입력
           </button>
         </div>
 
         <form onSubmit={handleExecuteScan} className="space-y-6">
-          {/* 탭 분기에 따른 동적 렌더링 카드 바디 */}
           {activeTab === "file" ? (
             <div
-              // 💡 3개의 핸들러를 박스 컨테이너에 바인딩
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              // 💡 isDragging 상태에 따라 클래스 동적 변경
-              className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${
-                isDragging
-                  ? "border-blue-500 bg-blue-50"
-                  : "border-slate-200 bg-slate-50/50 hover:border-blue-400"
-              }`}
+              className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${isDragging ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-slate-50/50 hover:border-blue-400"}`}
             >
               <input
                 type="file"
@@ -170,11 +187,11 @@ export default function EnhancedScanPage() {
                 {selectedFiles.length > 0 ? (
                   <div className="text-blue-600 font-bold text-base">
                     {selectedFiles[0].name} 포함 총 {selectedFiles.length}개
-                    파일 업로드 대기 중
+                    업로드 대기 중
                   </div>
                 ) : (
                   <p className="text-slate-600 font-medium">
-                    여러 파일을 마우스로 드래그하거나 여기를 클릭하여 선택하세요
+                    여러 파일을 드래그하거나 클릭하여 선택하세요
                   </p>
                 )}
               </label>
@@ -183,31 +200,30 @@ export default function EnhancedScanPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">
-                  가상 소스 파일명 설정
+                  가상 파일명 설정
                 </label>
                 <input
                   type="text"
                   value={virtualFilename}
                   onChange={(e) => setVirtualFilename(e.target.value)}
-                  placeholder="예: SecurityInspectionController.java"
-                  className="w-full px-4 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 font-mono"
+                  placeholder="snippet.py"
+                  className="w-full px-4 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-100 font-mono"
                 />
               </div>
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">
-                  소스코드 컨텐츠 복사 / 붙여넣기
+                  소스코드
                 </label>
                 <textarea
                   value={pastedCode}
                   onChange={(e) => setPastedCode(e.target.value)}
-                  className="w-full h-72 p-4 font-mono text-xs border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 bg-slate-950 text-slate-100 leading-relaxed"
-                  placeholder={`// 보안 취약점 점검을 가동할 코드를 입력하세요.\npublic void queryUser(String id) {\n    String query = "SELECT * FROM users WHERE id = '" + id + "'"; \n    // SQL 인젝션 취약 구문 테스트 예시\n}`}
+                  className="w-full h-72 p-4 font-mono text-xs border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 bg-slate-950 text-slate-100"
+                  placeholder="// 코드를 입력하세요"
                 />
               </div>
             </div>
           )}
 
-          {/* 하단 세부 조율 컨트롤러 */}
           <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
             <div className="flex gap-6 items-center">
               <div>
@@ -219,15 +235,10 @@ export default function EnhancedScanPage() {
                   onChange={(e) => setSelectedProfile(e.target.value)}
                   className="text-xs bg-white border border-slate-300 rounded px-2.5 py-1.5 font-medium outline-none"
                 >
-                  <option value="security_core">Core (CWE Top 25 기준)</option>
-                  <option value="security_extended">
-                    Extended (정밀 점검)
-                  </option>
-                  <option value="full">Full Engine Scan</option>
+                  <option value="security_core">Core (CWE Top 25)</option>
+                  <option value="full">Full Scan</option>
                 </select>
               </div>
-
-              {/* 💡 코드 스니펫 모드일 때는 종속성 분석(SBOM)이 불필요하므로 파일 모드에서만 체크박스 가시화 */}
               {activeTab === "file" && (
                 <div className="flex items-center gap-2 pt-4">
                   <input
@@ -241,12 +252,11 @@ export default function EnhancedScanPage() {
                     htmlFor="opt-sbom"
                     className="text-xs font-semibold text-slate-700 cursor-pointer"
                   >
-                    📦 SBOM 결과물 연계 생성
+                    📦 SBOM 연계 생성
                   </label>
                 </div>
               )}
             </div>
-
             <button
               type="submit"
               disabled={isScanning}
@@ -255,15 +265,126 @@ export default function EnhancedScanPage() {
               {isScanning ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  분석 엔진 연동 중...
+                  스캔 중...
                 </>
               ) : (
-                "보안 스캔 시작하기"
+                "보안 스캔 시작"
               )}
             </button>
           </div>
         </form>
       </div>
+
+      {/* 💡 4. 스캔 결과 표시 영역 (조건부 렌더링) */}
+      {scanResult && (
+        <div className="bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* 결과 헤더 */}
+          <div className="bg-slate-900 text-white p-6 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <CheckCircle className="w-6 h-6 text-emerald-400" />
+                스캔 분석 완료
+              </h2>
+              <p className="text-slate-400 text-sm mt-1 font-mono">
+                ID: {scanResult.scanId} | Target: {scanResult.target} |
+                소요시간: {scanResult.durationMs}ms
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {/* 💡 이력 목록이나 상세 페이지로 이동할 수 있는 바로가기 제공 */}
+              <button
+                onClick={() => router.push(`/scans/${scanResult.scanId}`)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+              >
+                상세 리포트 보기
+              </button>
+              {scanResult.sbomId && (
+                <button
+                  onClick={() => router.push(`/sboms/${scanResult.sbomId}`)}
+                  className="px-4 py-2 bg-emerald-900 text-emerald-300 hover:bg-emerald-800 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+                >
+                  📦 SBOM 확인
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 위협 요약 카드 */}
+          <div className="grid grid-cols-4 gap-px bg-slate-200 border-b border-slate-200">
+            <div className="bg-white p-4 text-center">
+              <div className="text-xs font-bold text-slate-500 uppercase">
+                Critical
+              </div>
+              <div className="text-3xl font-black text-red-600">
+                {scanResult.issuesSummary.CRITICAL}
+              </div>
+            </div>
+            <div className="bg-white p-4 text-center">
+              <div className="text-xs font-bold text-slate-500 uppercase">
+                High
+              </div>
+              <div className="text-3xl font-black text-orange-500">
+                {scanResult.issuesSummary.HIGH}
+              </div>
+            </div>
+            <div className="bg-white p-4 text-center">
+              <div className="text-xs font-bold text-slate-500 uppercase">
+                Medium
+              </div>
+              <div className="text-3xl font-black text-amber-500">
+                {scanResult.issuesSummary.MEDIUM}
+              </div>
+            </div>
+            <div className="bg-white p-4 text-center">
+              <div className="text-xs font-bold text-slate-500 uppercase">
+                Low
+              </div>
+              <div className="text-3xl font-black text-blue-500">
+                {scanResult.issuesSummary.LOW}
+              </div>
+            </div>
+          </div>
+
+          {/* 상세 취약점 리스트 */}
+          <div className="p-0">
+            {scanResult.issues.length > 0 ? (
+              <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+                {scanResult.issues.map((issue) => (
+                  <div
+                    key={issue.issueSeq}
+                    className="p-5 hover:bg-slate-50 flex gap-4 items-start"
+                  >
+                    <div
+                      className={`px-2.5 py-1 rounded text-xs font-bold border ${severityColors[issue.severity] || "bg-slate-100 text-slate-700"}`}
+                    >
+                      {issue.severity}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-slate-900 text-sm">
+                        {issue.typeKo}
+                      </h4>
+                      <p className="text-slate-600 mt-1 text-sm">
+                        {issue.message}
+                      </p>
+                      <div className="mt-2 text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded inline-block">
+                        {issue.filePath} : Line {issue.lineNumber}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-12 text-center text-slate-500 flex flex-col items-center">
+                <ShieldAlert className="w-12 h-12 text-emerald-400 mb-3" />
+                <h3 className="font-bold text-lg text-slate-700">
+                  탐지된 보안 취약점이 없습니다.
+                </h3>
+                <p className="text-sm">입력하신 코드는 안전합니다.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

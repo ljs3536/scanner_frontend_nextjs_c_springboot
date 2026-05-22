@@ -23,52 +23,33 @@ import {
 } from "lucide-react";
 import {
   downloadSbomCycloneDx,
-  getSbom,
-  getSbomSummary,
-  getSbomThreats,
-  type SbomSummary,
-  type SbomThreatResponse,
+  getSbomDetail,
+  type SbomDetailResponse,
+  type SbomThreat,
 } from "@/lib/api";
 
-// 심각도별 컬러 파레트
 const COLORS = {
-  CRITICAL: "#ef4444", // Red
-  HIGH: "#f97316", // Orange
-  MEDIUM: "#eab308", // Yellow
-  LOW: "#3b82f6", // Blue
-  INFO: "#94a3b8", // Slate
+  CRITICAL: "#ef4444",
+  HIGH: "#f97316",
+  MEDIUM: "#eab308",
+  LOW: "#3b82f6",
+  INFO: "#94a3b8",
 };
 
-interface ComponentsItem {
-  name: string;
-  version: string;
-  type: string;
-  licenses: string;
-}
 export default function SbomDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
 
-  const [summary, setSummary] = useState<SbomSummary | null>(null);
-
-  const [threats, setThreats] = useState<SbomThreatResponse | null>(null);
-  const [document, setDocument] = useState<any>(null);
+  // 상태 관리가 단 하나로 통합됨!
+  const [sbomData, setSbomData] = useState<SbomDetailResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const components = document?.components || [];
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [sbomData, summaryData, threatsData] = await Promise.all([
-          getSbom(id), // 메인 마스터 스펙 정보
-          getSbomSummary(id), // 컴포넌트 목록 명세
-          getSbomThreats(id), // 💡 취약점 연계 데이터 (findings 포함)
-        ]);
-        // 데이터 구조 보정 매핑
-        setDocument(sbomData);
-        setSummary(summaryData);
-        setThreats(threatsData);
+        const data = await getSbomDetail(id);
+        setSbomData(data);
       } catch (error) {
         console.error("SBOM 데이터 로딩 실패:", error);
       } finally {
@@ -78,13 +59,41 @@ export default function SbomDetailPage() {
     if (id) fetchData();
   }, [id]);
 
-  // 💡 원형 그래프(PieChart)용 데이터 가공 프로세스
+  // 💡 원형 그래프(PieChart)용 통계 데이터 직접 계산
   const pieChartData = useMemo(() => {
-    if (!threats?.summary?.severity_totals) return [];
-    return Object.entries(threats.summary.severity_totals)
-      .map(([name, value]) => ({ name, value: value as number }))
-      .filter((item) => item.value > 0); // 0개인 취약점은 그래프에서 제외
-  }, [threats]);
+    if (!sbomData?.threats) return [];
+
+    // 심각도별 카운트 집계
+    const counts: Record<string, number> = {
+      CRITICAL: 0,
+      HIGH: 0,
+      MEDIUM: 0,
+      LOW: 0,
+      INFO: 0,
+    };
+    sbomData.threats.forEach((threat) => {
+      if (counts[threat.severity] !== undefined) {
+        counts[threat.severity]++;
+      }
+    });
+
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .filter((item) => item.value > 0);
+  }, [sbomData]);
+
+  // 💡 메인 명세 테이블용 중복 제거된 컴포넌트 리스트 추출
+  const uniqueComponents = useMemo(() => {
+    if (!sbomData?.threats) return [];
+    const compMap = new Map<string, SbomThreat>();
+
+    sbomData.threats.forEach((threat) => {
+      const key = `${threat.componentName}-${threat.componentVersion}`;
+      if (!compMap.has(key)) compMap.set(key, threat);
+    });
+
+    return Array.from(compMap.values());
+  }, [sbomData]);
 
   if (isLoading) {
     return (
@@ -127,9 +136,8 @@ export default function SbomDetailPage() {
 
       {/* 2. 메인 대시보드 스플릿 그리드 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 💻 왼쪽 칼럼: 구성 현황 스펙 가이드 + 💡 [신규] 취약점 연계 원형 그래프 */}
+        {/* 💻 왼쪽 칼럼 */}
         <div className="space-y-6">
-          {/* [위] 구성 현황 마스터 카드 */}
           <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
               <Box className="w-4 h-4 text-slate-500" /> 구성 현황 개요
@@ -141,7 +149,7 @@ export default function SbomDetailPage() {
                   총 컴포넌트수
                 </span>
                 <span className="text-2xl font-black text-slate-800 font-mono">
-                  {components.length}{" "}
+                  {sbomData?.componentCount || 0}{" "}
                   <span className="text-sm font-normal text-slate-500">개</span>
                 </span>
               </div>
@@ -150,7 +158,7 @@ export default function SbomDetailPage() {
                   보안 위협 카운트
                 </span>
                 <span className="text-2xl font-black text-red-600 font-mono">
-                  {threats?.summary?.finding_count || 0}{" "}
+                  {sbomData?.threats?.length || 0}{" "}
                   <span className="text-sm font-normal text-red-400">건</span>
                 </span>
               </div>
@@ -160,25 +168,19 @@ export default function SbomDetailPage() {
               <div className="py-2.5 flex justify-between">
                 <span className="text-slate-400">명세서 버전</span>
                 <span className="font-mono font-semibold text-slate-700">
-                  v{summary?.spec_version || "1"}
-                </span>
-              </div>
-              <div className="py-2.5 flex justify-between">
-                <span className="text-slate-400">스캔 매핑 ID</span>
-                <span className="font-mono font-semibold text-blue-600">
-                  {threats?.scan_id || "-"}
+                  v{sbomData?.specVersion || "1"}
                 </span>
               </div>
               <div className="py-2.5 flex justify-between">
                 <span className="text-slate-400">위험도 스코어</span>
                 <span className="font-bold text-red-600">
-                  {threats?.summary?.risk_score || 0} / 100
+                  {sbomData?.riskScore || 0} / 100
                 </span>
               </div>
             </div>
           </div>
 
-          {/* 💡 [아래] 구성현황 연계 취약점 원형 그래프 카드 */}
+          {/* 원형 그래프 카드 */}
           <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between h-[340px]">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
               <ShieldAlert className="w-4 h-4 text-red-500" /> 취약점 연계 비율
@@ -235,12 +237,12 @@ export default function SbomDetailPage() {
           </div>
         </div>
 
-        {/* 💻 오른쪽 칼럼: 전체 컴포넌트 명세 테이블 리스트 (2/3 면적 차지) */}
+        {/* 💻 오른쪽 칼럼: 전체 컴포넌트 명세 테이블 리스트 */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
             <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
               <FileText className="w-4 h-4 text-slate-500" />
-              익스플로어 컴포넌트 마스터 명세 ({components.length}개 내역)
+              탐지된 컴포넌트 마스터 명세 ({uniqueComponents.length}개 내역)
             </h3>
           </div>
 
@@ -250,33 +252,29 @@ export default function SbomDetailPage() {
                 <tr className="bg-slate-100 text-slate-500 border-b border-slate-200 font-bold uppercase tracking-wider">
                   <th className="px-6 py-3.5 font-bold">패키지명</th>
                   <th className="px-6 py-3.5 font-bold">버전</th>
-                  <th className="px-6 py-3.5 font-bold">유형</th>
-                  <th className="px-6 py-3.5 font-bold">라이선스 규격</th>
+                  <th className="px-6 py-3.5 font-bold">생태계(Ecosystem)</th>
+                  <th className="px-6 py-3.5 font-bold">라이선스/유형</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {components.slice(0, 20).map((comp: any, idx: number) => (
+                {uniqueComponents.slice(0, 20).map((comp, idx) => (
                   <tr
                     key={idx}
                     className="hover:bg-slate-50/80 transition-colors"
                   >
                     <td className="px-6 py-3 font-bold text-slate-900">
-                      {comp.name}
+                      {comp.componentName}
                     </td>
                     <td className="px-6 py-3 text-slate-600 font-mono">
-                      {comp.version || "-"}
+                      {comp.componentVersion || "-"}
                     </td>
                     <td className="px-6 py-3 text-slate-500">
                       <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200 text-[10px] font-bold uppercase">
-                        {comp.type || "library"}
+                        {comp.ecosystem || "library"}
                       </span>
                     </td>
                     <td className="px-6 py-3 text-slate-600 font-semibold">
-                      {comp.licenses
-                        ?.map((l: any) => l.license?.id || l.license?.name)
-                        .join(", ") || (
-                        <span className="text-slate-400 font-normal">N/A</span>
-                      )}
+                      N/A
                     </td>
                   </tr>
                 ))}
@@ -284,7 +282,7 @@ export default function SbomDetailPage() {
             </table>
           </div>
 
-          {components.length > 20 && (
+          {uniqueComponents.length > 20 && (
             <div className="px-6 py-3.5 text-center text-xs text-slate-400 font-medium border-t border-slate-100 bg-slate-50/30">
               보안 무결성 검증을 위해 상위 20개 핵심 컴포넌트만 대시보드에
               스크리닝 중입니다.
@@ -293,18 +291,18 @@ export default function SbomDetailPage() {
         </div>
       </div>
 
-      {/* 3. 💡 하단 영역: 상세 보안 취약점 연계 리스트 피드 (findings 매핑) */}
-      {threats && threats.findings && threats.findings.length > 0 && (
+      {/* 3. 하단 영역: 상세 보안 취약점 연계 리스트 피드 */}
+      {sbomData?.threats && sbomData.threats.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/80">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
               <ShieldAlert className="w-4 h-4 text-red-500" />
-              보안 취약점 탐지 상세 내역 ({threats.summary.finding_count}건)
+              보안 취약점 탐지 상세 내역 ({sbomData.threats.length}건)
             </h2>
           </div>
 
           <div className="divide-y divide-slate-100">
-            {threats.findings.map((finding: any, idx: number) => {
+            {sbomData.threats.map((finding, idx) => {
               const themeColor =
                 COLORS[finding.severity as keyof typeof COLORS] || COLORS.INFO;
               return (
@@ -321,16 +319,16 @@ export default function SbomDetailPage() {
                         {finding.severity}
                       </span>
                       <h4 className="text-sm font-bold text-slate-900">
-                        {finding.component_name}{" "}
+                        {finding.componentName}{" "}
                         <span className="text-slate-400 font-mono font-normal text-xs ml-1">
-                          (v{finding.component_version})
+                          (v{finding.componentVersion})
                         </span>
                       </h4>
                     </div>
                     <span className="text-[10px] font-bold text-slate-400 bg-slate-100 border px-2 py-0.5 rounded-md">
-                      {finding.type === "known_vulnerable_component"
-                        ? "보안 결함 식별"
-                        : "컴플라이언스 준수 미흡"}
+                      {finding.type === "missing_license_metadata"
+                        ? "컴플라이언스 준수 미흡"
+                        : "보안 결함 식별"}
                     </span>
                   </div>
 
@@ -338,22 +336,6 @@ export default function SbomDetailPage() {
                     <p className="text-slate-600 font-medium leading-relaxed">
                       {finding.message}
                     </p>
-
-                    {/* CVE / 위협 식별자 맵핑 */}
-                    {finding.evidence?.vulnerability_ids && (
-                      <div className="flex flex-wrap gap-1">
-                        {finding.evidence.vulnerability_ids.map(
-                          (vid: string) => (
-                            <span
-                              key={vid}
-                              className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded shadow-sm font-mono"
-                            >
-                              {vid}
-                            </span>
-                          ),
-                        )}
-                      </div>
-                    )}
 
                     {/* 조치 권고 사항 가이드 연계 */}
                     {finding.recommendation && (
