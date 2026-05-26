@@ -19,6 +19,10 @@ import {
   FileText,
   CheckCircle,
   Cpu,
+  MessageSquarePlus,
+  X,
+  Paperclip,
+  Send,
 } from "lucide-react";
 import api, {
   fetchAiExplanation,
@@ -88,6 +92,49 @@ export default function AdvancedScanReportPage() {
     core: { explain: null, fix: null },
     openai: { explain: null, fix: null },
   });
+
+  const [isInquiryDrawerOpen, setIsInquiryDrawerOpen] = useState(false);
+  const [inquiryTitle, setInquiryTitle] = useState("");
+  const [inquiryContent, setInquiryContent] = useState("");
+  const [inquiryFile, setInquiryFile] = useState<File | null>(null);
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
+
+  const handleSubmitInquiry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inquiryTitle.trim() || !inquiryContent.trim()) {
+      return alert("제목과 내용을 모두 입력해주세요.");
+    }
+
+    setIsSubmittingInquiry(true);
+    try {
+      const formData = new FormData();
+      formData.append("title", inquiryTitle);
+      formData.append("content", inquiryContent);
+      // 현재 보고 있는 스캔 결과의 ID를 자동으로 매핑
+      formData.append("scanId", scanId);
+
+      if (inquiryFile) {
+        formData.append("file", inquiryFile);
+      }
+
+      await api.post("/inquiries", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      alert("오탐/장애 문의가 성공적으로 접수되었습니다.");
+
+      // 폼 초기화 및 드로어 닫기
+      setInquiryTitle("");
+      setInquiryContent("");
+      setInquiryFile(null);
+      setIsInquiryDrawerOpen(false);
+    } catch (error) {
+      console.error("문의 등록 실패:", error);
+      alert("문의 등록 중 오류가 발생했습니다.");
+    } finally {
+      setIsSubmittingInquiry(false);
+    }
+  };
 
   useEffect(() => {
     if (!scanId) return;
@@ -303,6 +350,15 @@ export default function AdvancedScanReportPage() {
               ID: {metadata.scan_id} |{" "}
               {new Date(metadata.scan_date).toLocaleString()}
             </p>
+          </div>
+          <div className="pl-4 border-l border-slate-200">
+            <button
+              onClick={() => setIsInquiryDrawerOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-800 transition-colors shadow-sm"
+            >
+              <MessageSquarePlus className="w-4 h-4" />
+              오탐 및 장애 문의
+            </button>
           </div>
         </div>
 
@@ -618,6 +674,127 @@ export default function AdvancedScanReportPage() {
           )}
         </div>
       </div>
+      {/* 💡 [추가] 오른쪽 슬라이드 드로어 (오프캔버스) */}
+      {isInquiryDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          {/* 1. 반투명 배경 (클릭 시 닫힘) */}
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] transition-opacity animate-in fade-in duration-200"
+            onClick={() => setIsInquiryDrawerOpen(false)}
+          />
+
+          {/* 2. 우측 슬라이드 패널 */}
+          <div className="relative w-[450px] bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 border-l border-slate-200">
+            {/* 드로어 헤더 */}
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">
+                  <MessageSquarePlus className="w-5 h-5 text-blue-600" />
+                  스캔 결과 문의하기
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  오탐 제보나 시스템 장애에 대해 문의해주세요.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsInquiryDrawerOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 드로어 바디 (폼) */}
+            <form
+              onSubmit={handleSubmitInquiry}
+              className="flex-1 flex flex-col p-6 overflow-y-auto space-y-5"
+            >
+              {/* 자동 연동 정보 (읽기 전용) */}
+              <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl space-y-1">
+                <label className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">
+                  연동된 스캔 ID
+                </label>
+                <div className="text-sm font-mono text-slate-700 font-semibold">
+                  {scanId}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-2">
+                  문의 제목
+                </label>
+                <input
+                  type="text"
+                  value={inquiryTitle}
+                  onChange={(e) => setInquiryTitle(e.target.value)}
+                  placeholder="예: SSRF 탐지 항목에 대한 오탐 제보합니다."
+                  className="w-full px-4 text-black py-2.5 text-sm border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all font-sans"
+                />
+              </div>
+
+              <div className="flex-1 flex flex-col">
+                <label className="block text-xs font-bold text-slate-600 mb-2">
+                  상세 내용
+                </label>
+                <textarea
+                  value={inquiryContent}
+                  onChange={(e) => setInquiryContent(e.target.value)}
+                  placeholder="문제 상황, 오탐 근거 등 상세한 내용을 작성해주세요."
+                  className="w-full flex-1 text-black min-h-[250px] p-4 text-sm border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all font-sans resize-none leading-relaxed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-2">
+                  증빙 파일 첨부 (선택)
+                </label>
+                <div className="border border-dashed border-slate-300 rounded-xl p-4 text-center hover:bg-slate-50 transition-colors">
+                  <input
+                    type="file"
+                    id="inquiry-file"
+                    className="hidden"
+                    onChange={(e) =>
+                      setInquiryFile(e.target.files?.[0] || null)
+                    }
+                  />
+                  <label
+                    htmlFor="inquiry-file"
+                    className="cursor-pointer flex flex-col items-center justify-center gap-2"
+                  >
+                    <Paperclip className="w-6 h-6 text-slate-400" />
+                    {inquiryFile ? (
+                      <span className="text-sm font-bold text-blue-600">
+                        {inquiryFile.name}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-500 font-medium">
+                        클릭하여 화면 캡처 등 파일 선택
+                      </span>
+                    )}
+                  </label>
+                </div>
+              </div>
+
+              {/* 드로어 풋터 (제출 버튼) */}
+              <div className="pt-6 mt-auto border-t border-slate-100">
+                <button
+                  type="submit"
+                  disabled={isSubmittingInquiry}
+                  className="w-full bg-blue-600 text-white font-bold text-sm py-3 rounded-xl hover:bg-blue-700 transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isSubmittingInquiry ? (
+                    <div className="w-5 h-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" /> 문의 접수하기
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

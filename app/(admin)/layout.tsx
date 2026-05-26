@@ -11,6 +11,7 @@ import {
   User,
   Menu,
   X,
+  LayersPlus,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -55,6 +56,7 @@ export default function AdminLayout({
   const menuItems = [
     { name: "관제 대시보드", href: "/admin", icon: LayoutDashboard },
     { name: "계정 발급 관리", href: "/admin/register", icon: UserPlus },
+    { name: "문의 내역", href: "/admin/inquiry", icon: LayersPlus },
   ];
 
   return (
