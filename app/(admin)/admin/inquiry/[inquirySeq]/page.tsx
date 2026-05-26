@@ -78,6 +78,32 @@ export default function AdminInquiryDetailPage() {
     }
   };
 
+  const handleDownloadFile = async (fileSeq: number, fileName: string) => {
+    try {
+      // 1. responseType을 'blob'으로 지정하여 바이너리 스트림으로 수신
+      const response = await api.get(`/files/download/${fileSeq}`, {
+        responseType: "blob",
+      });
+
+      // 2. 브라우저 메모리에 가상의 다운로드 URL 생성
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+
+      // 3. 임시 <a> 태그를 만들어 클릭 이벤트 강제 발생
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", fileName); // 저장될 파일명 지정
+      document.body.appendChild(link);
+      link.click();
+
+      // 4. 메모리 누수 방지를 위한 후처리
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("파일 다운로드 실패:", error);
+      alert("파일을 다운로드하는 중 오류가 발생했습니다.");
+    }
+  };
+
   if (loading)
     return (
       <div className="p-20 text-center text-slate-500">
@@ -142,10 +168,18 @@ export default function AdminInquiryDetailPage() {
                 key={file.fileSeq}
                 className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm shadow-sm"
               >
-                <span className="text-slate-600 font-medium">
+                <span className="text-slate-600 font-medium truncate max-w-[200px]">
                   {file.fileName}
                 </span>
-                <button className="text-blue-500 hover:text-blue-700 transition-colors">
+
+                {/* 💡 [수정] onClick 이벤트 연결 */}
+                <button
+                  onClick={() =>
+                    handleDownloadFile(file.fileSeq, file.fileName)
+                  }
+                  className="text-blue-500 hover:text-blue-700 transition-colors p-1"
+                  title="파일 다운로드"
+                >
                   <Download className="w-4 h-4" />
                 </button>
               </div>
