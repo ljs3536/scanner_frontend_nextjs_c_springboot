@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   LayersPlus,
+  FileBoxIcon,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -57,6 +58,7 @@ export default function AdminLayout({
     { name: "관제 대시보드", href: "/admin", icon: LayoutDashboard },
     { name: "계정 발급 관리", href: "/admin/register", icon: UserPlus },
     { name: "문의 내역", href: "/admin/inquiry", icon: LayersPlus },
+    { name: "공지 사항", href: "/admin/notice", icon: FileBoxIcon },
   ];
 
   return (

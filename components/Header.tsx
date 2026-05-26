@@ -10,6 +10,7 @@ import {
   Cpu,
   User,
   LayersPlus,
+  FileBoxIcon,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -21,6 +22,7 @@ export default function Sidebar() {
     { name: "소스코드 스캔", href: "/scan", icon: Shield },
     { name: "스캔 내역", href: "/scans", icon: Layers },
     { name: "문의 내역", href: "/inquiry", icon: LayersPlus },
+    { name: "공지 사항", href: "/notice", icon: FileBoxIcon },
   ];
 
   return (
