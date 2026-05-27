@@ -1,331 +1,279 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import api from "@/lib/api";
+import {
+  ShieldAlert,
+  FileSearch,
+  MessageSquareWarning,
+  PackageSearch,
+  Activity,
+  Layers,
+  FileCode2,
+} from "lucide-react";
 import {
   PieChart,
   Pie,
   Cell,
-  ResponsiveContainer,
   Tooltip,
   Legend,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
+  ResponsiveContainer,
 } from "recharts";
-import {
-  ShieldCheck,
-  AlertTriangle,
-  History,
-  TrendingDown,
-  ChevronRight,
-  Info,
-  Activity,
-} from "lucide-react";
 
-// 심각도 테마 컬러 파레트
-const SEVERITY_COLORS = {
-  CRITICAL: "#ef4444",
-  HIGH: "#f97316",
-  MEDIUM: "#eab308",
-  LOW: "#3b82f6",
-  INFO: "#94a3b8",
-};
+// --- 💡 1. 백엔드 DTO와 매핑되는 인터페이스 정의 ---
+interface DashboardData {
+  summary: {
+    totalScans: number;
+    totalVulnerabilities: number;
+    pendingInquiries: number;
+    totalSboms: number;
+  };
+  languageDistribution: { name: string; value: number }[];
+  sbomInsights: {
+    totalComponents: number;
+    totalLicenses: number;
+    averageRiskScore: number;
+  };
+  recentScans: any[]; // (기존 스캔 내역 타입 사용)
+}
+
+// 파이 차트 색상 팔레트
+const COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#ec4899",
+];
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Mock 데이터 세팅 (실제 배포 및 시연 시 백엔드와 연동하기 딱 좋은 통계 포맷)
-  const stats = {
-    totalScans: 1248,
-    healthScore: 92,
-    activeThreats: 34,
-    mttrDays: 3.2,
-  };
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        const response = await api.get("/dashboard");
+        setData(response.data);
+      } catch (error) {
+        console.error("대시보드 데이터 로드 실패:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDashboard();
+  }, []);
 
-  const severityData = [
-    { name: "CRITICAL", value: 125 },
-    { name: "HIGH", value: 312 },
-    { name: "MEDIUM", value: 499 },
-    { name: "LOW", value: 250 },
-    { name: "INFO", value: 62 },
-  ];
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-500">
+        <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mr-3" />
+        대시보드 데이터를 불러오는 중입니다...
+      </div>
+    );
+  }
 
-  const mttrTrendData = [
-    { month: "1월", mttr: 5.2 },
-    { month: "2월", mttr: 4.8 },
-    { month: "3월", mttr: 4.1 },
-    { month: "4월", mttr: 3.2 },
-    { month: "5월", mttr: 3.0 },
-  ];
-
-  const recentScans = [
-    {
-      id: "SCN-2026-001",
-      target: "auth-service / main",
-      status: "COMPLETED",
-      date: "2026-05-19 10:15",
-      issues: "12 Critical, 4 High",
-    },
-    {
-      id: "SCN-2026-002",
-      target: "payment-gateway / dev",
-      status: "IN_PROGRESS",
-      date: "2026-05-19 11:30",
-      issues: "분석 중...",
-    },
-    {
-      id: "SCN-2026-003",
-      target: "admin-portal / v2.1",
-      status: "COMPLETED",
-      date: "2026-05-18 16:45",
-      issues: "3 Medium, 21 Low",
-    },
-    {
-      id: "SCN-2026-004",
-      target: "user-profile-api",
-      status: "FAILED",
-      date: "2026-05-18 14:20",
-      issues: "인증 오류",
-    },
-    {
-      id: "SCN-2026-005",
-      target: "core-engine / stable",
-      status: "COMPLETED",
-      date: "2026-05-17 09:00",
-      issues: "0 Critical, 2 Low",
-    },
-  ];
+  if (!data) return null;
 
   return (
-    <div className="space-y-6 max-w-[1500px] mx-auto">
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+      {/* --- 헤더 영역 --- */}
       <div>
-        <h1 className="text-xl font-black text-slate-900 tracking-tight">
-          종합 보안 관제 대시보드
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+          <Activity className="w-6 h-6 text-blue-600" /> 통합 보안 관제 대시보드
         </h1>
-        <p className="text-xs text-slate-400 mt-1">
-          시스템 내 탐지된 보안 결함, 공급망 오픈소스 취약점 및 AI 시큐어 코드
-          연동 로그를 종합 모니터링합니다.
+        <p className="text-sm text-slate-500 mt-1">
+          프로젝트의 전반적인 보안 상태와 취약점 현황을 요약합니다.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              누적 총 스캔 횟수
-            </span>
-            <p className="text-2xl font-black font-mono text-slate-800">
-              {stats.totalScans.toLocaleString()}
-            </p>
-          </div>
-          <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-blue-600">
-            <History className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              플랫폼 보안 점수
-            </span>
-            <p className="text-2xl font-black font-mono text-emerald-600">
-              {stats.healthScore} / 100
-            </p>
-          </div>
-          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-emerald-600">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider">
-              현재 탐지된 위협
-            </span>
-            <p className="text-2xl font-black font-mono text-red-600">
-              {stats.activeThreats}{" "}
-              <span className="text-xs font-medium text-slate-400">건</span>
-            </p>
-          </div>
-          <div className="p-3 bg-red-50 rounded-xl border border-red-100 text-red-500">
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              평균 결함 조치 시간 (MTTR)
-            </span>
-            <p className="text-2xl font-black font-mono text-slate-800">
-              {stats.mttrDays}{" "}
-              <span className="text-xs font-medium text-slate-400">일</span>
-            </p>
-          </div>
-          <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 text-purple-600">
-            <TrendingDown className="w-5 h-5" />
-          </div>
-        </div>
+      {/* --- 💡 2. 상단: 종합 요약 카드 (Grid 4열) --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <SummaryCard
+          icon={<FileSearch className="w-6 h-6 text-blue-600" />}
+          title="총 스캔 횟수"
+          value={data.summary.totalScans}
+          subtitle="누적된 전체 스캔 건수"
+          bgColor="bg-blue-50"
+          borderColor="border-blue-100"
+        />
+        <SummaryCard
+          icon={<ShieldAlert className="w-6 h-6 text-rose-600" />}
+          title="발견된 주요 취약점"
+          value={data.summary.totalVulnerabilities}
+          subtitle="Critical & High 등급 합계"
+          bgColor="bg-rose-50"
+          borderColor="border-rose-100"
+        />
+        <SummaryCard
+          icon={<PackageSearch className="w-6 h-6 text-emerald-600" />}
+          title="관리 중인 SBOM"
+          value={data.summary.totalSboms}
+          subtitle="생성 및 추적 중인 SBOM"
+          bgColor="bg-emerald-50"
+          borderColor="border-emerald-100"
+        />
+        <SummaryCard
+          icon={<MessageSquareWarning className="w-6 h-6 text-amber-600" />}
+          title="답변 대기 문의"
+          value={data.summary.pendingInquiries}
+          subtitle="처리되지 않은 문의 수"
+          bgColor="bg-amber-50"
+          borderColor="border-amber-100"
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between h-[360px]">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Activity className="w-4 h-4 text-slate-500" /> 등급별 보안 결함
-            분포 현황
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* --- 💡 3. 좌측: 언어 분포 파이 차트 --- */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-1 flex flex-col">
+          <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <FileCode2 className="w-5 h-5 text-indigo-500" /> 언어별 스캔 분포
           </h3>
-          <div className="flex-1 flex items-center justify-center relative mt-2">
-            <div className="w-full h-[220px]">
+          <div className="flex-1 min-h-[250px]">
+            {data.languageDistribution.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={severityData}
+                    data={data.languageDistribution}
                     cx="50%"
                     cy="50%"
                     innerRadius={60}
-                    outerRadius={85}
-                    paddingAngle={3}
+                    outerRadius={80}
+                    paddingAngle={5}
                     dataKey="value"
                   >
-                    {severityData.map((entry, index) => (
+                    {data.languageDistribution.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={
-                          SEVERITY_COLORS[
-                            entry.name as keyof typeof SEVERITY_COLORS
-                          ]
-                        }
+                        fill={COLORS[index % COLORS.length]}
                       />
                     ))}
                   </Pie>
                   <Tooltip
-                    contentStyle={{ fontSize: "11px", borderRadius: "8px" }}
+                    contentStyle={{
+                      borderRadius: "8px",
+                      border: "none",
+                      boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                    }}
                   />
-                  <Legend
-                    iconSize={7}
-                    wrapperStyle={{ fontSize: "11px", fontWeight: "bold" }}
-                  />
+                  <Legend verticalAlign="bottom" height={36} />
                 </PieChart>
               </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                스캔 데이터가 없습니다.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* --- 💡 4. 중앙~우측: SBOM 인사이트 및 활동 --- */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* SBOM 미니 대시보드 */}
+          <div className="bg-slate-900 rounded-2xl shadow-sm border border-slate-800 p-6 text-white relative overflow-hidden">
+            <Layers className="absolute -right-4 -bottom-4 w-32 h-32 text-slate-800/50" />
+            <h3 className="font-bold text-slate-100 mb-6 flex items-center gap-2 relative z-10">
+              <PackageSearch className="w-5 h-5 text-emerald-400" />{" "}
+              공급망(SBOM) 보안 리스크 요약
+            </h3>
+            <div className="grid grid-cols-3 gap-4 relative z-10">
+              <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+                <div className="text-slate-400 text-xs font-semibold mb-1">
+                  식별된 컴포넌트
+                </div>
+                <div className="text-2xl font-black text-white">
+                  {data.sbomInsights.totalComponents.toLocaleString()}개
+                </div>
+              </div>
+              <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+                <div className="text-slate-400 text-xs font-semibold mb-1">
+                  감지된 라이선스
+                </div>
+                <div className="text-2xl font-black text-white">
+                  {data.sbomInsights.totalLicenses.toLocaleString()}종
+                </div>
+              </div>
+              <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+                <div className="text-slate-400 text-xs font-semibold mb-1">
+                  평균 위험도 (0-10)
+                </div>
+                <div className="text-2xl font-black text-emerald-400">
+                  {data.sbomInsights.averageRiskScore}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 최근 스캔 내역 (간단한 리스트) */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-slate-800">최근 스캔 내역</h3>
+              <button
+                onClick={() => router.push("/scan")}
+                className="text-sm font-semibold text-blue-600 hover:underline"
+              >
+                전체보기
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {data.recentScans && data.recentScans.length > 0 ? (
+                data.recentScans.map((scan, idx) => (
+                  <div
+                    key={idx}
+                    className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-lg border border-slate-100 transition-colors"
+                  >
+                    <div>
+                      <div className="font-semibold text-sm text-slate-800">
+                        {scan.target}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {new Date(scan.startedAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 bg-rose-100 text-rose-700 text-xs font-bold rounded-full">
+                      위험 {scan.issuesCritical + scan.issuesHigh}건
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6 text-sm text-slate-400">
+                  최근 진행된 스캔이 없습니다.
+                </div>
+              )}
             </div>
           </div>
         </div>
-
-        <div className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between h-[360px]">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-            <TrendingDown className="w-4 h-4 text-purple-500" /> 월별 결함 조치
-            시간 (MTTR) 추이 분석
-          </h3>
-          <div className="flex-1 w-full h-[220px] mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={mttrTrendData}
-                margin={{ top: 10, right: 20, left: -20, bottom: 0 }}
-              >
-                <defs>
-                  <linearGradient id="colorMttr" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#f1f5f9"
-                />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: "bold" }}
-                  stroke="#e2e8f0"
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: "bold" }}
-                  stroke="#e2e8f0"
-                />
-                <Tooltip
-                  contentStyle={{ fontSize: "12px", borderRadius: "8px" }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="mttr"
-                  name="평균 조치일"
-                  stroke="#6366f1"
-                  strokeWidth={2.5}
-                  fillOpacity={1}
-                  fill="url(#colorMttr)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1 mt-2 bg-slate-50 p-2 rounded-lg border">
-            <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-            AI 패치 권고 코드 연동 스크린 적용 이후 조치 속도가 지난 분기 대비
-            평균 42% 상향 단축되었습니다.
-          </p>
-        </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-          <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-            최근 보안 스캔 이력 운영 로그
-          </h3>
-          <button
-            onClick={() => router.push("/scans")}
-            className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5"
-          >
-            전체 리스트 열기 <ChevronRight className="w-4 h-4" />
-          </button>
+// --- 공통 카드 컴포넌트 ---
+function SummaryCard({
+  icon,
+  title,
+  value,
+  subtitle,
+  bgColor,
+  borderColor,
+}: any) {
+  return (
+    <div
+      className={`p-6 rounded-2xl shadow-sm border ${borderColor} bg-white flex flex-col justify-between`}
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div className={`p-3 rounded-xl ${bgColor}`}>{icon}</div>
+      </div>
+      <div>
+        <div className="text-3xl font-black text-slate-800 mb-1">
+          {value.toLocaleString()}
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs font-medium">
-            <thead>
-              <tr className="bg-slate-100/70 text-slate-500 border-b border-slate-200 font-bold uppercase tracking-wider">
-                <th className="px-6 py-3.5">Scan ID</th>
-                <th className="px-6 py-3.5">대상 프로젝트 / 파일</th>
-                <th className="px-6 py-3.5">진행 상태</th>
-                <th className="px-6 py-3.5">진단 완료 일시</th>
-                <th className="px-6 py-3.5">탐지 내역</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700">
-              {recentScans.map((scan) => (
-                <tr
-                  key={scan.id}
-                  className="hover:bg-slate-50/70 transition-colors"
-                >
-                  <td className="px-6 py-3.5 font-mono font-bold text-slate-900">
-                    {scan.id}
-                  </td>
-                  <td className="px-6 py-3.5 font-semibold">{scan.target}</td>
-                  <td className="px-6 py-3.5">
-                    <span
-                      className={`px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider ${
-                        scan.status === "COMPLETED"
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : scan.status === "IN_PROGRESS"
-                            ? "bg-amber-50 text-amber-700 border border-amber-200 animate-pulse"
-                            : "bg-red-50 text-red-700 border border-red-200"
-                      }`}
-                    >
-                      {scan.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-3.5 font-mono text-slate-400">
-                    {scan.date}
-                  </td>
-                  <td className="px-6 py-3.5 text-slate-500 font-semibold">
-                    {scan.issues}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <div className="font-bold text-slate-700 text-sm">{title}</div>
+        <div className="text-xs text-slate-500 mt-1">{subtitle}</div>
       </div>
     </div>
   );
